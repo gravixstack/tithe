@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Church Tithe & Income Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 p-4 md:p-8">
+
+    <div class="max-w-5xl mx-auto bg-white p-8 rounded-2xl shadow-xl border border-slate-200">
+        <div class="flex flex-col md:flex-row justify-between items-center mb-8 gap-4 border-b pb-6">
+            <h1 class="text-3xl font-extrabold text-emerald-800">Church Tithe Tracker</h1>
+            <div class="text-right">
+                <p class="text-sm text-slate-500 font-medium">Currency: <span class="text-emerald-600 font-bold">KES</span></p>
+                <p class="text-xs text-slate-400" id="currentDateDisplay"></p>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 bg-emerald-50 p-6 rounded-xl">
+            <div>
+                <label class="block text-sm font-bold text-emerald-900 mb-1">Description</label>
+                <input type="text" id="source" placeholder="e.g. Salary" class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none">
+            </div>
+            <div>
+                <label class="block text-sm font-bold text-emerald-900 mb-1">Amount (Ksh)</label>
+                <input type="number" id="amount" placeholder="0.00" class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none">
+            </div>
+            <div>
+                <label class="block text-sm font-bold text-emerald-900 mb-1">Date</label>
+                <input type="date" id="inputDate" class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none">
+            </div>
+            <div class="flex items-end">
+                <button onclick="addIncome()" class="w-full bg-emerald-600 text-white font-bold py-3 rounded-lg hover:bg-emerald-700 transition-all shadow-md">Add Record</button>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-10">
+            <input type="text" id="searchInput" onkeyup="updateUI()" placeholder="🔍 Search by description..." class="w-full p-3 border border-slate-200 rounded-lg outline-none focus:border-emerald-500">
+            <div class="flex gap-2">
+                <input type="date" id="filterDate" onchange="updateUI()" class="w-full p-3 border border-slate-200 rounded-lg outline-none focus:border-emerald-500">
+                <button onclick="clearFilters()" class="px-4 bg-slate-200 text-slate-600 rounded-lg font-bold hover:bg-slate-300">Reset</button>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+            <div class="bg-white p-5 rounded-xl border-l-4 border-emerald-500 shadow-sm">
+                <p class="text-xs text-slate-500 uppercase font-bold tracking-wider">Total Income</p>
+                <p id="totalIncome" class="text-2xl font-black text-slate-800">Ksh 0</p>
+            </div>
+            <div class="bg-white p-5 rounded-xl border-l-4 border-amber-500 shadow-sm">
+                <p class="text-xs text-slate-500 uppercase font-bold tracking-wider">Pending Tithe</p>
+                <p id="pendingTithe" class="text-2xl font-black text-amber-600">Ksh 0</p>
+            </div>
+            <div class="bg-white p-5 rounded-xl border-l-4 border-blue-500 shadow-sm">
+                <p class="text-xs text-slate-500 uppercase font-bold tracking-wider">Total Tithe Paid</p>
+                <p id="paidTithe" class="text-2xl font-black text-blue-700">Ksh 0</p>
+            </div>
+        </div>
+
+        <div class="overflow-x-auto rounded-lg border border-slate-200">
+            <table class="w-full text-left bg-white">
+                <thead>
+                    <tr class="bg-slate-100 text-slate-600 uppercase text-xs">
+                        <th class="p-4">Date</th>
+                        <th class="p-4">Source</th>
+                        <th class="p-4">Amount</th>
+                        <th class="p-4">Tithe (10%)</th>
+                        <th class="p-4">Status</th>
+                        <th class="p-4 text-center">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="incomeList" class="text-slate-700"></tbody>
+            </table>
+        </div>
+
+        <div class="mt-16">
+            <div class="flex items-center justify-between mb-4 border-b pb-2">
+                <div class="flex items-center gap-2">
+                    <span class="text-xl">🗑️</span>
+                    <h2 class="text-lg font-bold text-slate-500">Deleted Records</h2>
+                </div>
+                <button onclick="clearBin()" class="text-xs text-red-500 font-bold hover:underline">Empty Bin Permanently</button>
+            </div>
+            <div class="overflow-x-auto opacity-60">
+                <table class="w-full text-left text-sm">
+                    <tbody id="recycleBin"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let incomes = JSON.parse(localStorage.getItem('churchDataKSH_v2')) || [];
+        
+        // Set default input date to today
+        document.getElementById('inputDate').valueAsDate = new Date();
+        document.getElementById('currentDateDisplay').innerText = new Date().toLocaleDateString('en-KE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+        function formatKSH(amount) {
+            return "Ksh " + amount.toLocaleString('en-KE', { minimumFractionDigits: 2 });
+        }
+
+        function updateUI() {
+            const list = document.getElementById('incomeList');
+            const bin = document.getElementById('recycleBin');
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const filterDate = document.getElementById('filterDate').value;
+            
+            list.innerHTML = '';
+            bin.innerHTML = '';
+
+            let totalInc = 0;
+            let pendingT = 0;
+            let paidT = 0;
+
+            incomes.sort((a, b) => new Date(b.date) - new Date(a.date)); // Show newest first
+
+            incomes.forEach((item, index) => {
+                const matchesSearch = item.source.toLowerCase().includes(searchTerm);
+                const matchesDate = filterDate === "" || item.date === filterDate;
+
+                if (!item.deleted) {
+                    totalInc += item.amount;
+                    if (item.status === 'Pending') pendingT += item.tithe;
+                    else paidT += item.tithe;
+
+                    if (matchesSearch && matchesDate) {
+                        const payBtn = item.status === 'Pending' 
+                            ? `<button onclick="payOne(${index})" class="text-emerald-600 hover:text-emerald-800 font-bold text-xs uppercase tracking-tighter mr-4">Pay</button>` 
+                            : '';
+
+                        list.innerHTML += `
+                            <tr class="border-b border-slate-100 hover:bg-slate-50 transition">
+                                <td class="p-4 text-xs text-slate-500">${item.date}</td>
+                                <td class="p-4 font-medium">${item.source}</td>
+                                <td class="p-4">${formatKSH(item.amount)}</td>
+                                <td class="p-4 text-amber-600 font-bold">${formatKSH(item.tithe)}</td>
+                                <td class="p-4">
+                                    <span class="px-3 py-1 rounded-full text-xs font-black ${item.status === 'Paid' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'}">
+                                        ${item.status}
+                                    </span>
+                                </td>
+                                <td class="p-4 text-center">
+                                    ${payBtn}
+                                    <button onclick="moveToBin(${index})" class="text-red-400 hover:text-red-600 font-bold text-xs uppercase tracking-tighter">Remove</button>
+                                </td>
+                            </tr>`;
+                    }
+                } else {
+                    if (matchesSearch && matchesDate) {
+                        bin.innerHTML += `
+                            <tr class="border-b border-dashed border-slate-200 bg-slate-50">
+                                <td class="p-3 text-slate-400 italic">${item.date} | ${item.source} (${formatKSH(item.amount)})</td>
+                                <td class="p-3 text-right">
+                                    <button onclick="restoreItem(${index})" class="text-emerald-600 hover:underline font-bold mr-4">Restore</button>
+                                    <button onclick="permanentDelete(${index})" class="text-red-600 hover:underline font-bold">Delete Forever</button>
+                                </td>
+                            </tr>`;
+                    }
+                }
+            });
+
+            document.getElementById('totalIncome').innerText = formatKSH(totalInc);
+            document.getElementById('pendingTithe').innerText = formatKSH(pendingT);
+            document.getElementById('paidTithe').innerText = formatKSH(paidT);
+            localStorage.setItem('churchDataKSH_v2', JSON.stringify(incomes));
+        }
+
+        function addIncome() {
+            const source = document.getElementById('source').value;
+            const amount = parseFloat(document.getElementById('amount').value);
+            const date = document.getElementById('inputDate').value;
+
+            if (source && !isNaN(amount) && date) {
+                incomes.push({
+                    source,
+                    amount,
+                    date,
+                    tithe: amount * 0.1,
+                    status: 'Pending',
+                    deleted: false
+                });
+                document.getElementById('source').value = '';
+                document.getElementById('amount').value = '';
+                updateUI();
+            } else {
+                alert("Please fill in all fields correctly.");
+            }
+        }
+
+        function clearFilters() {
+            document.getElementById('searchInput').value = "";
+            document.getElementById('filterDate').value = "";
+            updateUI();
+        }
+
+        function payOne(index) {
+            incomes[index].status = 'Paid';
+            updateUI();
+        }
+
+        function checkoutAll() {
+            if(confirm("Mark all visible records as Paid?")) {
+                const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+                const filterDate = document.getElementById('filterDate').value;
+                
+                incomes.forEach(item => {
+                    const matchesSearch = item.source.toLowerCase().includes(searchTerm);
+                    const matchesDate = filterDate === "" || item.date === filterDate;
+                    if (!item.deleted && matchesSearch && matchesDate) {
+                        item.status = 'Paid';
+                    }
+                });
+                updateUI();
+            }
+        }
+
+        function moveToBin(index) {
+            incomes[index].deleted = true;
+            updateUI();
+        }
+
+        function restoreItem(index) {
+            incomes[index].deleted = false;
+            updateUI();
+        }
+
+        function permanentDelete(index) {
+            if(confirm("Permanently erase this record?")) {
+                incomes.splice(index, 1);
+                updateUI();
+            }
+        }
+
+        function clearBin() {
+            if(confirm("Clear all deleted items forever?")) {
+                incomes = incomes.filter(item => !item.deleted);
+                updateUI();
+            }
+        }
+
+        updateUI();
+    </script>
+</body>
+</html>
